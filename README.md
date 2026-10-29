@@ -9,30 +9,33 @@
 
 ## 📱 Features & Highlights
 
-- **AI Food Vision (Gemini 1.5 Flash):** Snap or upload a photo of your meal; the on-device AI identifies food items, estimates portion weights, and breaks down calories, protein, carbs, and fats with 1-tap logging directly to your diary.
+- **Customizable Weekly Loss Speed (Pace Selector):**
+  - Choose how fast you want to lose or gain weight per week (0.25 kg, 0.50 kg, 0.75 kg, 1.00 kg/wk or custom slider).
+  - Automatically recalculates daily calorie deficit (`weekly_rate * 1,100 kcal`) and macro targets.
+  - Computes exact projected weeks and target date to reach your goal weight.
+- **Dedicated Progress Hub & Weigh-In Logger:**
+  - Dedicated tab to log daily progress with weight stepper (`+/- 0.1 kg`), date picker, mood/energy state chips (🚀 High Energy, 😊 Great, ⚖️ Consistent, 🥱 Fatigued, 💧 Bloated), and reflection notes.
+  - Complete historical weigh-in log with delta weight change (`-0.4 kg` 📉).
+- **Smart Coaching Feedback Engine ("Doing Good or Not"):**
+  - Dynamic evaluation compares actual daily deficit vs target pace.
+  - Automatically assesses status: 🟢 On Track (Optimal), 🟡 Needs Adjustment (Surplus), 🔵 Eating Too Little (Floor Alert), 🟣 Plateau Notice (Water Retention), or 🏆 Milestone Achieved.
+- **AI Food Vision (Gemini Flash):** Snap or upload a photo of your meal; the AI identifies food items, estimates portion weights, and breaks down calories, protein, carbs, and fats with 1-tap logging.
 - **Dynamic Interactive Dashboard:**
   - Real-time **Calorie Ring** visualization showing net calories, goal, and burned calories.
   - **Daily Budget Math** row (`Base Goal + Exercise - Food = Remaining`).
   - **Macro Distribution Bars** for Protein, Carbohydrates, and Fats with target progress.
   - **Hydration Tracker** with quick +250ml cups and target progress.
-  - **Quick Add Row** for instant logging of common foods (Banana, Boiled Eggs, Whey Scoop, Coffee, Greek Yogurt).
-  - Four organized meal categories: **Breakfast, Lunch, Dinner, Snacks**.
-- **Interactive AI Nutritionist Coach:**
-  - Full-featured chat assistant providing real-time personalized nutrition advice, recipe recommendations, and macro auditing grounded in your daily food diary.
+  - **Quick Add Row** for instant logging of common foods.
+- **Interactive AI Nutritionist Coach:** Full-featured chat assistant providing real-time personalized nutrition advice grounded in your daily food diary.
 - **Detailed Stats & Analytics:**
-  - 7-day Calorie Bar Chart rendered with `fl_chart` comparing daily intake to target.
-  - Macro Distribution Pie Chart with interactive slice percentages.
-  - Weekly averages calculation (Average Calories, Protein, Carbs, Fat).
-  - Weight logging and historical weight trend tracker.
-- **Personalized Biometrics & Onboarding:**
-  - 4-step onboarding wizard calculating exact Basal Metabolic Rate (BMR) and Total Daily Energy Expenditure (TDEE) via the **Mifflin-St Jeor equation**.
-  - Goal adjustments for Fat Loss (-500 kcal), Maintenance, or Muscle Building (+350 kcal).
-- **Customizable Aesthetics & Themes:**
-  - Instant Light Mode / Dark Mode switching.
-  - 6 vibrant accent color themes (Emerald, Blue, Violet, Rose, Amber, Teal).
-- **Data Privacy & Portability:**
-  - Completely local persistence using `shared_preferences`.
-  - Full JSON backup export (copy to clipboard) and 1-tap JSON restore.
+  - Weight Trend line chart with smooth curves and target goal dotted line (7D / 30D / 90D / ALL).
+  - 7-day Calorie Adherence Bar Chart color-coded by deficit status.
+  - Macro Distribution breakdown (Protein, Carbs, Fat averages).
+- **Personalized Biometrics & Onboarding:** Calculates exact BMR and TDEE via the **Mifflin-St Jeor equation**.
+- **Customizable Aesthetics & Themes:** Instant Light/Dark mode and 6 vibrant accent themes.
+- **Data Privacy & Portability:** Completely local persistence via `shared_preferences` with full JSON backup export & restore.
+
+> 📖 **Full System Documentation:** For complete architectural specifications and deep-dive documentation, see [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md).
 
 ---
 
