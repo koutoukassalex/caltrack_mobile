@@ -96,11 +96,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       targetCarbs: _calculatedTargets['carbs'] ?? 220.0,
       targetFat: _calculatedTargets['fat'] ?? 60.0,
       targetWaterMl: 2500,
+      startWeightKg: weight,
+      targetWeightKg: _goal == GoalType.lose ? (weight - 5.0) : _goal == GoalType.gain ? (weight + 3.0) : weight,
+      weeklyRateKg: 0.5,
       isOnboarded: true,
     );
 
     await appProvider.updateProfile(updatedProfile);
-    await appProvider.logWeight(weight);
+    await appProvider.logWeight(weight, note: 'Initial baseline weigh-in', feeling: 'great');
     widget.onComplete();
   }
 

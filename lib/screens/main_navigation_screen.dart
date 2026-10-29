@@ -195,7 +195,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildNavItem(0, Icons.home_rounded, 'Home', accentColor),
-                _buildNavItem(1, Icons.bar_chart_rounded, 'Stats', accentColor),
+                _buildNavItem(1, Icons.trending_up_rounded, 'Progress', accentColor),
                 // Center Quick Add Button
                 GestureDetector(
                   onTap: () => _showQuickAddSheet(context),

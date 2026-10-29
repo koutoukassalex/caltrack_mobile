@@ -72,6 +72,9 @@ class UserProfile {
   double targetCarbs;
   double targetFat;
   int targetWaterMl;
+  double weeklyRateKg; // Target speed: kg lost or gained per week (e.g. 0.25, 0.5, 0.75, 1.0)
+  double targetWeightKg; // Target goal weight in kg
+  double startWeightKg; // Initial baseline weight in kg
   String geminiApiKey;
   int accentColorIndex;
   bool isDarkMode;
@@ -90,6 +93,9 @@ class UserProfile {
     this.targetCarbs = 250.0,
     this.targetFat = 65.0,
     this.targetWaterMl = 2500,
+    this.weeklyRateKg = 0.5,
+    this.targetWeightKg = 65.0,
+    this.startWeightKg = 70.0,
     this.geminiApiKey = '',
     this.accentColorIndex = 0,
     this.isDarkMode = true,
@@ -110,6 +116,9 @@ class UserProfile {
       'targetCarbs': targetCarbs,
       'targetFat': targetFat,
       'targetWaterMl': targetWaterMl,
+      'weeklyRateKg': weeklyRateKg,
+      'targetWeightKg': targetWeightKg,
+      'startWeightKg': startWeightKg,
       'geminiApiKey': geminiApiKey,
       'accentColorIndex': accentColorIndex,
       'isDarkMode': isDarkMode,
@@ -134,12 +143,16 @@ class UserProfile {
       );
     } catch (_) {}
 
+    final weight = (json['weightKg'] as num?)?.toDouble() ?? 70.0;
+    final startW = (json['startWeightKg'] as num?)?.toDouble() ?? weight;
+    final targetW = (json['targetWeightKg'] as num?)?.toDouble() ?? (weight > 5.0 ? weight - 5.0 : 65.0);
+
     return UserProfile(
       name: json['name'] as String? ?? 'Alex',
       gender: json['gender'] as String? ?? 'male',
       age: (json['age'] as num?)?.toInt() ?? 25,
       heightCm: (json['heightCm'] as num?)?.toDouble() ?? 175.0,
-      weightKg: (json['weightKg'] as num?)?.toDouble() ?? 70.0,
+      weightKg: weight,
       activityLevel: level,
       goal: goalType,
       targetCalories: (json['targetCalories'] as num?)?.toDouble() ?? 2200.0,
@@ -147,6 +160,9 @@ class UserProfile {
       targetCarbs: (json['targetCarbs'] as num?)?.toDouble() ?? 250.0,
       targetFat: (json['targetFat'] as num?)?.toDouble() ?? 65.0,
       targetWaterMl: (json['targetWaterMl'] as num?)?.toInt() ?? 2500,
+      weeklyRateKg: (json['weeklyRateKg'] as num?)?.toDouble() ?? 0.5,
+      targetWeightKg: targetW,
+      startWeightKg: startW,
       geminiApiKey: json['geminiApiKey'] as String? ?? '',
       accentColorIndex: (json['accentColorIndex'] as num?)?.toInt() ?? 0,
       isDarkMode: json['isDarkMode'] as bool? ?? true,
@@ -167,6 +183,9 @@ class UserProfile {
     double? targetCarbs,
     double? targetFat,
     int? targetWaterMl,
+    double? weeklyRateKg,
+    double? targetWeightKg,
+    double? startWeightKg,
     String? geminiApiKey,
     int? accentColorIndex,
     bool? isDarkMode,
@@ -185,6 +204,9 @@ class UserProfile {
       targetCarbs: targetCarbs ?? this.targetCarbs,
       targetFat: targetFat ?? this.targetFat,
       targetWaterMl: targetWaterMl ?? this.targetWaterMl,
+      weeklyRateKg: weeklyRateKg ?? this.weeklyRateKg,
+      targetWeightKg: targetWeightKg ?? this.targetWeightKg,
+      startWeightKg: startWeightKg ?? this.startWeightKg,
       geminiApiKey: geminiApiKey ?? this.geminiApiKey,
       accentColorIndex: accentColorIndex ?? this.accentColorIndex,
       isDarkMode: isDarkMode ?? this.isDarkMode,

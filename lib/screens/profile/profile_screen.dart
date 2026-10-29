@@ -18,6 +18,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late TextEditingController _ageController;
   late TextEditingController _heightController;
   late TextEditingController _weightController;
+  late TextEditingController _targetWeightController;
+  late TextEditingController _startWeightController;
   late TextEditingController _calController;
   late TextEditingController _proteinController;
   late TextEditingController _carbsController;
@@ -28,6 +30,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late String _gender;
   late ActivityLevel _activityLevel;
   late GoalType _goal;
+  late double _weeklyRate;
   bool _hideApiKey = true;
 
   @override
@@ -38,6 +41,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _ageController = TextEditingController(text: profile.age.toString());
     _heightController = TextEditingController(text: profile.heightCm.round().toString());
     _weightController = TextEditingController(text: profile.weightKg.toStringAsFixed(1));
+    _targetWeightController = TextEditingController(text: profile.targetWeightKg.toStringAsFixed(1));
+    _startWeightController = TextEditingController(text: profile.startWeightKg.toStringAsFixed(1));
     _calController = TextEditingController(text: profile.targetCalories.round().toString());
     _proteinController = TextEditingController(text: profile.targetProtein.round().toString());
     _carbsController = TextEditingController(text: profile.targetCarbs.round().toString());
@@ -48,6 +53,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _gender = profile.gender;
     _activityLevel = profile.activityLevel;
     _goal = profile.goal;
+    _weeklyRate = profile.weeklyRateKg;
   }
 
   @override
@@ -56,6 +62,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _ageController.dispose();
     _heightController.dispose();
     _weightController.dispose();
+    _targetWeightController.dispose();
+    _startWeightController.dispose();
     _calController.dispose();
     _proteinController.dispose();
     _carbsController.dispose();
@@ -65,10 +73,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  void _recalculateTargets() {
+  void _recalculateTargets([double? customWeeklyRate]) {
     final weight = double.tryParse(_weightController.text) ?? 70.0;
     final height = double.tryParse(_heightController.text) ?? 175.0;
     final age = int.tryParse(_ageController.text) ?? 25;
+    final rate = customWeeklyRate ?? _weeklyRate;
 
     final targets = NutritionCalculator.calculateTargets(
       gender: _gender,
@@ -77,6 +86,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       age: age,
       activityLevel: _activityLevel,
       goal: _goal,
+      weeklyRateKg: rate,
     );
 
     setState(() {
@@ -87,8 +97,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Calculated optimal macros via Mifflin-St Jeor equation!'),
+      SnackBar(
+        content: Text(
+          _goal == GoalType.lose
+              ? 'Updated targets for -${rate.toStringAsFixed(2)} kg/wk (${(rate * 1100).round()} kcal deficit)!'
+              : 'Recalculated targets based on your pace!',
+        ),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -96,12 +110,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _saveAll() async {
     final appProvider = Provider.of<AppProvider>(context, listen: false);
+    final currentWeight = double.tryParse(_weightController.text) ?? 70.0;
+    final targetWeight = double.tryParse(_targetWeightController.text) ?? (currentWeight - 5.0);
+    final startWeight = double.tryParse(_startWeightController.text) ?? currentWeight;
+
     final p = appProvider.profile.copyWith(
       name: _nameController.text.trim(),
       gender: _gender,
       age: int.tryParse(_ageController.text) ?? 25,
       heightCm: double.tryParse(_heightController.text) ?? 175.0,
-      weightKg: double.tryParse(_weightController.text) ?? 70.0,
+      weightKg: currentWeight,
+      targetWeightKg: targetWeight,
+      startWeightKg: startWeight,
+      weeklyRateKg: _weeklyRate,
       activityLevel: _activityLevel,
       goal: _goal,
       targetCalories: double.tryParse(_calController.text) ?? 2000.0,
@@ -338,7 +359,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: _buildFormField('Weight', _weightController, 'kg', const TextInputType.numberWithOptions(decimal: true)),
+                        child: _buildFormField('Current Wt', _weightController, 'kg', const TextInputType.numberWithOptions(decimal: true)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Starting Weight & Target Weight
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildFormField('Start Weight', _startWeightController, 'kg', const TextInputType.numberWithOptions(decimal: true)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildFormField('Goal Weight', _targetWeightController, 'kg', const TextInputType.numberWithOptions(decimal: true)),
                       ),
                     ],
                   ),
@@ -369,14 +403,122 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                     ),
                     items: const [
-                      DropdownMenuItem(value: GoalType.lose, child: Text('🔥 Lose Fat (-500 kcal)')),
+                      DropdownMenuItem(value: GoalType.lose, child: Text('🔥 Lose Fat (Calorie Deficit)')),
                       DropdownMenuItem(value: GoalType.maintain, child: Text('⚖️ Maintain Weight')),
-                      DropdownMenuItem(value: GoalType.gain, child: Text('💪 Build Muscle (+350 kcal)')),
+                      DropdownMenuItem(value: GoalType.gain, child: Text('💪 Build Muscle (Caloric Surplus)')),
                     ],
                     onChanged: (val) {
-                      if (val != null) setState(() => _goal = val);
+                      if (val != null) {
+                        setState(() => _goal = val);
+                        _recalculateTargets();
+                      }
                     },
                   ),
+                  // Weekly Target Pace (Speed) Selector
+                  if (_goal != GoalType.maintain) ...[
+                    const SizedBox(height: 18),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: theme.scaffoldBackgroundColor.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: accentColor.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _goal == GoalType.lose ? 'Weight Loss Speed' : 'Muscle Gain Speed',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: accentColor.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  '${_goal == GoalType.lose ? "-" : "+"}${_weeklyRate.toStringAsFixed(2)} kg / week',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: accentColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          // Preset speed chips
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _buildSpeedChip(0.25, '🐢 Relaxed\n0.25 kg/wk', accentColor),
+                                const SizedBox(width: 8),
+                                _buildSpeedChip(0.50, '⚡ Standard\n0.50 kg/wk', accentColor),
+                                const SizedBox(width: 8),
+                                _buildSpeedChip(0.75, '🔥 Active\n0.75 kg/wk', accentColor),
+                                const SizedBox(width: 8),
+                                _buildSpeedChip(1.00, '🚀 Aggressive\n1.00 kg/wk', accentColor),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          // Fine-tune Slider
+                          Slider(
+                            value: _weeklyRate.clamp(0.1, 1.5),
+                            min: 0.1,
+                            max: 1.5,
+                            divisions: 14,
+                            activeColor: accentColor,
+                            label: '${_weeklyRate.toStringAsFixed(2)} kg/wk',
+                            onChanged: (val) {
+                              setState(() => _weeklyRate = (val * 100).round() / 100);
+                              _recalculateTargets(val);
+                            },
+                          ),
+                          // Dynamic Calculations & Estimation Banner
+                          Builder(builder: (context) {
+                            final dailyAdj = (_weeklyRate * 1100).round();
+                            final currW = double.tryParse(_weightController.text) ?? 70.0;
+                            final targetW = double.tryParse(_targetWeightController.text) ?? 65.0;
+                            final diff = (currW - targetW).abs();
+                            final weeks = _weeklyRate > 0 ? (diff / _weeklyRate).ceil() : 0;
+
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: accentColor.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.info_outline_rounded, size: 16, color: accentColor),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _goal == GoalType.lose
+                                          ? 'Daily Deficit: -$dailyAdj kcal • ~${weeks} wks to reach ${targetW.toStringAsFixed(1)} kg'
+                                          : 'Daily Surplus: +$dailyAdj kcal • ~${weeks} wks to reach ${targetW.toStringAsFixed(1)} kg',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: theme.colorScheme.onBackground.withOpacity(0.8),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
@@ -388,7 +530,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
-                      onPressed: _recalculateTargets,
+                      onPressed: () => _recalculateTargets(),
                     ),
                   ),
                 ],
@@ -626,6 +768,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 100),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSpeedChip(double rate, String label, Color accentColor) {
+    final isSelected = (_weeklyRate - rate).abs() < 0.05;
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: () {
+        setState(() => _weeklyRate = rate);
+        _recalculateTargets(rate);
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? accentColor.withOpacity(0.18) : theme.cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? accentColor : theme.dividerColor.withOpacity(0.4),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected ? accentColor : theme.colorScheme.onBackground,
+          ),
         ),
       ),
     );

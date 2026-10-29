@@ -81,6 +81,15 @@ class StorageService {
     }
   }
 
+  static Future<bool> saveWeightEntries(List<WeightEntry> entries) async {
+    await init();
+    entries.sort((a, b) => a.date.compareTo(b.date));
+    return await _prefs!.setString(
+      AppConstants.keyWeight,
+      jsonEncode(entries.map((e) => e.toJson()).toList()),
+    );
+  }
+
   static Future<bool> addWeightEntry(WeightEntry entry) async {
     await init();
     final entries = await getWeightEntries();
@@ -90,11 +99,14 @@ class StorageService {
         e.date.month == entry.date.month &&
         e.date.day == entry.date.day);
     entries.add(entry);
-    entries.sort((a, b) => a.date.compareTo(b.date));
-    return await _prefs!.setString(
-      AppConstants.keyWeight,
-      jsonEncode(entries.map((e) => e.toJson()).toList()),
-    );
+    return await saveWeightEntries(entries);
+  }
+
+  static Future<bool> deleteWeightEntry(String id) async {
+    await init();
+    final entries = await getWeightEntries();
+    entries.removeWhere((e) => e.id == id);
+    return await saveWeightEntries(entries);
   }
 
   // Backup & Restore

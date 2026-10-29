@@ -16,7 +16,7 @@ class NutritionCalculator {
     }
   }
 
-  /// Calculate Total Daily Energy Expenditure (TDEE) and recommended macros
+  /// Calculate Total Daily Energy Expenditure (TDEE) and recommended macros based on target weekly pace
   static Map<String, double> calculateTargets({
     required String gender,
     required double weightKg,
@@ -24,6 +24,7 @@ class NutritionCalculator {
     required int age,
     required ActivityLevel activityLevel,
     required GoalType goal,
+    double weeklyRateKg = 0.5,
   }) {
     final bmr = calculateBMR(
       gender: gender,
@@ -34,17 +35,21 @@ class NutritionCalculator {
 
     final tdee = bmr * activityLevel.multiplier;
 
+    // 1 kg body fat ≈ 7,700 kcal -> daily calorie adjustment = (weeklyRateKg * 7700) / 7 = weeklyRateKg * 1100
+    final double dailyAdjustment = (weeklyRateKg.clamp(0.1, 1.5) * 1100.0);
+
     double targetCalories = tdee;
     switch (goal) {
       case GoalType.lose:
-        targetCalories = tdee - 500;
-        if (targetCalories < 1200) targetCalories = 1200; // Safe minimum
+        targetCalories = tdee - dailyAdjustment;
+        final double minSafe = gender.toLowerCase() == 'female' ? 1200.0 : 1500.0;
+        if (targetCalories < minSafe) targetCalories = minSafe; // Safe medical minimum
         break;
       case GoalType.maintain:
         targetCalories = tdee;
         break;
       case GoalType.gain:
-        targetCalories = tdee + 350;
+        targetCalories = tdee + dailyAdjustment;
         break;
     }
 

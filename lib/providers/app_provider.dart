@@ -147,18 +147,64 @@ class AppProvider extends ChangeNotifier {
     await StorageService.saveProfile(_profile);
   }
 
-  // Weight Logging
-  Future<void> logWeight(double weightKg) async {
+  // Weight & Pace Logging
+  Future<void> logWeight(
+    double weightKg, {
+    String? note,
+    String? feeling,
+    DateTime? date,
+  }) async {
+    final entryDate = date ?? _currentDate;
     final entry = WeightEntry(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       weightKg: weightKg,
-      date: _currentDate,
+      date: entryDate,
+      note: note,
+      feeling: feeling,
     );
     await StorageService.addWeightEntry(entry);
     _weightLogs = await StorageService.getWeightEntries();
 
-    // Also update current profile weight
+    // If starting weight not set, initialize it
+    if (_profile.startWeightKg <= 0) {
+      _profile = _profile.copyWith(startWeightKg: weightKg);
+    }
+
+    // Update current profile weight
     _profile = _profile.copyWith(weightKg: weightKg);
+    await StorageService.saveProfile(_profile);
+    notifyListeners();
+  }
+
+  Future<void> deleteWeight(String id) async {
+    await StorageService.deleteWeightEntry(id);
+    _weightLogs = await StorageService.getWeightEntries();
+    if (_weightLogs.isNotEmpty) {
+      _profile = _profile.copyWith(weightKg: _weightLogs.last.weightKg);
+      await StorageService.saveProfile(_profile);
+    }
+    notifyListeners();
+  }
+
+  Future<void> updateWeeklyRate(double newRateKg) async {
+    final newTargets = NutritionCalculator.calculateTargets(
+      gender: _profile.gender,
+      weightKg: _profile.weightKg,
+      heightCm: _profile.heightCm,
+      age: _profile.age,
+      activityLevel: _profile.activityLevel,
+      goal: _profile.goal,
+      weeklyRateKg: newRateKg,
+    );
+
+    _profile = _profile.copyWith(
+      weeklyRateKg: newRateKg,
+      targetCalories: newTargets['calories'] ?? _profile.targetCalories,
+      targetProtein: newTargets['protein'] ?? _profile.targetProtein,
+      targetCarbs: newTargets['carbs'] ?? _profile.targetCarbs,
+      targetFat: newTargets['fat'] ?? _profile.targetFat,
+    );
+
     await StorageService.saveProfile(_profile);
     notifyListeners();
   }
