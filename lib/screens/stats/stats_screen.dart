@@ -214,8 +214,23 @@ class _StatsScreenState extends State<StatsScreen> {
                             Navigator.pop(ctx);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Logged progress: ${val.toStringAsFixed(1)} kg on ${DateFormat("MMM d").format(selectedDate)}!'),
+                                content: Row(
+                                  children: [
+                                    const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        appProvider.profile.autoSyncTargets
+                                            ? 'Logged ${val.toStringAsFixed(1)} kg! Auto-calculator synced daily targets.'
+                                            : 'Logged progress: ${val.toStringAsFixed(1)} kg on ${DateFormat("MMM d").format(selectedDate)}!',
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: const Color(0xFF10B981),
                                 behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                               ),
                             );
                           }

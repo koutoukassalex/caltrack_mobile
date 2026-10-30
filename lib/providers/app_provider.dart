@@ -28,6 +28,7 @@ class AppProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   Color get currentAccentColor => AppConstants.accentColors[_profile.accentColorIndex.clamp(0, AppConstants.accentColors.length - 1)];
+  List<Color> get currentAccentGradient => AppConstants.accentGradients[_profile.accentColorIndex.clamp(0, AppConstants.accentGradients.length - 1)];
 
   AppProvider() {
     init();
@@ -172,6 +173,27 @@ class AppProvider extends ChangeNotifier {
 
     // Update current profile weight
     _profile = _profile.copyWith(weightKg: weightKg);
+
+    // If autoSyncTargets is enabled, dynamically adjust targets to match new weight
+    if (_profile.autoSyncTargets) {
+      final newTargets = NutritionCalculator.calculateTargets(
+        gender: _profile.gender,
+        weightKg: weightKg,
+        heightCm: _profile.heightCm,
+        age: _profile.age,
+        activityLevel: _profile.activityLevel,
+        goal: _profile.goal,
+        weeklyRateKg: _profile.weeklyRateKg,
+      );
+
+      _profile = _profile.copyWith(
+        targetCalories: newTargets['calories'] ?? _profile.targetCalories,
+        targetProtein: newTargets['protein'] ?? _profile.targetProtein,
+        targetCarbs: newTargets['carbs'] ?? _profile.targetCarbs,
+        targetFat: newTargets['fat'] ?? _profile.targetFat,
+      );
+    }
+
     await StorageService.saveProfile(_profile);
     notifyListeners();
   }
@@ -180,25 +202,70 @@ class AppProvider extends ChangeNotifier {
     await StorageService.deleteWeightEntry(id);
     _weightLogs = await StorageService.getWeightEntries();
     if (_weightLogs.isNotEmpty) {
-      _profile = _profile.copyWith(weightKg: _weightLogs.last.weightKg);
+      final newW = _weightLogs.last.weightKg;
+      _profile = _profile.copyWith(weightKg: newW);
+      if (_profile.autoSyncTargets) {
+        final newTargets = NutritionCalculator.calculateTargets(
+          gender: _profile.gender,
+          weightKg: newW,
+          heightCm: _profile.heightCm,
+          age: _profile.age,
+          activityLevel: _profile.activityLevel,
+          goal: _profile.goal,
+          weeklyRateKg: _profile.weeklyRateKg,
+        );
+        _profile = _profile.copyWith(
+          targetCalories: newTargets['calories'] ?? _profile.targetCalories,
+          targetProtein: newTargets['protein'] ?? _profile.targetProtein,
+          targetCarbs: newTargets['carbs'] ?? _profile.targetCarbs,
+          targetFat: newTargets['fat'] ?? _profile.targetFat,
+        );
+      }
       await StorageService.saveProfile(_profile);
     }
     notifyListeners();
   }
 
-  Future<void> updateWeeklyRate(double newRateKg) async {
+  Future<Map<String, double>> recalculateAndSyncTargets({
+    double? weightKg,
+    double? heightCm,
+    int? age,
+    String? gender,
+    ActivityLevel? activityLevel,
+    GoalType? goal,
+    double? weeklyRateKg,
+    double? targetWeightKg,
+    double? startWeightKg,
+    bool notify = true,
+  }) async {
+    final w = weightKg ?? _profile.weightKg;
+    final h = heightCm ?? _profile.heightCm;
+    final a = age ?? _profile.age;
+    final g = gender ?? _profile.gender;
+    final act = activityLevel ?? _profile.activityLevel;
+    final gl = goal ?? _profile.goal;
+    final rate = weeklyRateKg ?? _profile.weeklyRateKg;
+
     final newTargets = NutritionCalculator.calculateTargets(
-      gender: _profile.gender,
-      weightKg: _profile.weightKg,
-      heightCm: _profile.heightCm,
-      age: _profile.age,
-      activityLevel: _profile.activityLevel,
-      goal: _profile.goal,
-      weeklyRateKg: newRateKg,
+      gender: g,
+      weightKg: w,
+      heightCm: h,
+      age: a,
+      activityLevel: act,
+      goal: gl,
+      weeklyRateKg: rate,
     );
 
     _profile = _profile.copyWith(
-      weeklyRateKg: newRateKg,
+      weightKg: w,
+      heightCm: h,
+      age: a,
+      gender: g,
+      activityLevel: act,
+      goal: gl,
+      weeklyRateKg: rate,
+      targetWeightKg: targetWeightKg ?? _profile.targetWeightKg,
+      startWeightKg: startWeightKg ?? _profile.startWeightKg,
       targetCalories: newTargets['calories'] ?? _profile.targetCalories,
       targetProtein: newTargets['protein'] ?? _profile.targetProtein,
       targetCarbs: newTargets['carbs'] ?? _profile.targetCarbs,
@@ -206,7 +273,24 @@ class AppProvider extends ChangeNotifier {
     );
 
     await StorageService.saveProfile(_profile);
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
+    return newTargets;
+  }
+
+  Future<void> toggleAutoSyncTargets(bool enabled) async {
+    _profile = _profile.copyWith(autoSyncTargets: enabled);
+    if (enabled) {
+      await recalculateAndSyncTargets();
+    } else {
+      await StorageService.saveProfile(_profile);
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateWeeklyRate(double newRateKg) async {
+    await recalculateAndSyncTargets(weeklyRateKg: newRateKg);
   }
 
   // AI Spark Tip

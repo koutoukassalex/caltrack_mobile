@@ -162,16 +162,13 @@ class HomeScreen extends StatelessWidget {
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       gradient: LinearGradient(
-                                        colors: [
-                                          accentColor,
-                                          accentColor.withOpacity(0.7),
-                                        ],
+                                        colors: appProvider.currentAccentGradient,
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                       ),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: accentColor.withOpacity(0.3),
+                                          color: appProvider.currentAccentGradient.first.withOpacity(0.35),
                                           blurRadius: 10,
                                           offset: const Offset(0, 4),
                                         ),
@@ -281,6 +278,7 @@ class HomeScreen extends StatelessWidget {
                         tip: appProvider.sparkTip,
                         onRefresh: () => appProvider.refreshSparkTip(),
                         accentColor: accentColor,
+                        gradientColors: appProvider.currentAccentGradient,
                       ),
 
                       const SizedBox(height: 20),
@@ -293,6 +291,7 @@ class HomeScreen extends StatelessWidget {
                           goal: profile.targetCalories,
                           burned: log.totalBurnedCalories,
                           accentColor: accentColor,
+                          gradientColors: appProvider.currentAccentGradient,
                         ),
                       ),
 

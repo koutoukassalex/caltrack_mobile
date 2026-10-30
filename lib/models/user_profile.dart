@@ -79,6 +79,7 @@ class UserProfile {
   int accentColorIndex;
   bool isDarkMode;
   bool isOnboarded;
+  bool autoSyncTargets; // Auto recalculate & sync targets when new weight is logged
 
   UserProfile({
     this.name = 'Alex',
@@ -100,6 +101,7 @@ class UserProfile {
     this.accentColorIndex = 0,
     this.isDarkMode = true,
     this.isOnboarded = false,
+    this.autoSyncTargets = true,
   });
 
   Map<String, dynamic> toJson() {
@@ -123,6 +125,7 @@ class UserProfile {
       'accentColorIndex': accentColorIndex,
       'isDarkMode': isDarkMode,
       'isOnboarded': isOnboarded,
+      'autoSyncTargets': autoSyncTargets,
     };
   }
 
@@ -167,6 +170,7 @@ class UserProfile {
       accentColorIndex: (json['accentColorIndex'] as num?)?.toInt() ?? 0,
       isDarkMode: json['isDarkMode'] as bool? ?? true,
       isOnboarded: json['isOnboarded'] as bool? ?? false,
+      autoSyncTargets: json['autoSyncTargets'] as bool? ?? true,
     );
   }
 
@@ -190,6 +194,7 @@ class UserProfile {
     int? accentColorIndex,
     bool? isDarkMode,
     bool? isOnboarded,
+    bool? autoSyncTargets,
   }) {
     return UserProfile(
       name: name ?? this.name,
@@ -211,6 +216,7 @@ class UserProfile {
       accentColorIndex: accentColorIndex ?? this.accentColorIndex,
       isDarkMode: isDarkMode ?? this.isDarkMode,
       isOnboarded: isOnboarded ?? this.isOnboarded,
+      autoSyncTargets: autoSyncTargets ?? this.autoSyncTargets,
     );
   }
 }

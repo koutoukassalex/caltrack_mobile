@@ -205,14 +205,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
-                        colors: [accentColor, accentColor.withOpacity(0.8)],
+                        colors: appProvider.currentAccentGradient,
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: accentColor.withOpacity(0.4),
-                          blurRadius: 12,
+                          color: appProvider.currentAccentGradient.first.withOpacity(0.4),
+                          blurRadius: 14,
                           offset: const Offset(0, 4),
                         ),
                       ],

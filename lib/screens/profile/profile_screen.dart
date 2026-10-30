@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../providers/app_provider.dart';
 import '../../core/constants.dart';
 import '../../core/utils.dart';
+import '../../core/theme.dart';
 import '../../models/user_profile.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -32,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late GoalType _goal;
   late double _weeklyRate;
   bool _hideApiKey = true;
+  double? _lastKnownProfileWeight;
 
   @override
   void initState() {
@@ -54,6 +56,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _activityLevel = profile.activityLevel;
     _goal = profile.goal;
     _weeklyRate = profile.weeklyRateKg;
+    _lastKnownProfileWeight = profile.weightKg;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final profile = Provider.of<AppProvider>(context).profile;
+    // If external progress weigh-in updated the weight in provider, sync controllers
+    if (_lastKnownProfileWeight != null && (profile.weightKg - _lastKnownProfileWeight!).abs() > 0.05) {
+      _lastKnownProfileWeight = profile.weightKg;
+      _weightController.text = profile.weightKg.toStringAsFixed(1);
+      _calController.text = profile.targetCalories.round().toString();
+      _proteinController.text = profile.targetProtein.round().toString();
+      _carbsController.text = profile.targetCarbs.round().toString();
+      _fatController.text = profile.targetFat.round().toString();
+    }
   }
 
   @override
@@ -73,39 +91,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  void _recalculateTargets([double? customWeeklyRate]) {
-    final weight = double.tryParse(_weightController.text) ?? 70.0;
-    final height = double.tryParse(_heightController.text) ?? 175.0;
-    final age = int.tryParse(_ageController.text) ?? 25;
+  /// Recalculates targets and immediately syncs them to AppProvider & StorageService
+  Future<void> _recalculateAndSyncTargets({double? customWeeklyRate, bool showToast = true}) async {
+    final appProvider = Provider.of<AppProvider>(context, listen: false);
+    final weight = double.tryParse(_weightController.text) ?? appProvider.profile.weightKg;
+    final height = double.tryParse(_heightController.text) ?? appProvider.profile.heightCm;
+    final age = int.tryParse(_ageController.text) ?? appProvider.profile.age;
     final rate = customWeeklyRate ?? _weeklyRate;
+    final targetWeight = double.tryParse(_targetWeightController.text) ?? appProvider.profile.targetWeightKg;
+    final startWeight = double.tryParse(_startWeightController.text) ?? appProvider.profile.startWeightKg;
 
-    final targets = NutritionCalculator.calculateTargets(
-      gender: _gender,
+    final targets = await appProvider.recalculateAndSyncTargets(
       weightKg: weight,
       heightCm: height,
       age: age,
+      gender: _gender,
       activityLevel: _activityLevel,
       goal: _goal,
       weeklyRateKg: rate,
+      targetWeightKg: targetWeight,
+      startWeightKg: startWeight,
+      notify: true,
     );
 
     setState(() {
+      _weeklyRate = rate;
+      _lastKnownProfileWeight = weight;
       _calController.text = targets['calories']!.round().toString();
       _proteinController.text = targets['protein']!.round().toString();
       _carbsController.text = targets['carbs']!.round().toString();
       _fatController.text = targets['fat']!.round().toString();
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _goal == GoalType.lose
-              ? 'Updated targets for -${rate.toStringAsFixed(2)} kg/wk (${(rate * 1100).round()} kcal deficit)!'
-              : 'Recalculated targets based on your pace!',
+    if (showToast && mounted) {
+      final deficit = (rate * 1100).round();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _goal == GoalType.lose
+                      ? 'Targets auto-calculated & synced: ${targets['calories']!.round()} kcal (-$deficit kcal deficit at ${rate.toStringAsFixed(2)} kg/wk)!'
+                      : _goal == GoalType.gain
+                          ? 'Targets auto-calculated & synced: ${targets['calories']!.round()} kcal (+$deficit kcal surplus at ${rate.toStringAsFixed(2)} kg/wk)!'
+                          : 'Targets auto-calculated & synced: ${targets['calories']!.round()} kcal maintenance!',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      );
+    }
   }
 
   Future<void> _saveAll() async {
@@ -134,9 +177,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     await appProvider.updateProfile(p);
+    _lastKnownProfileWeight = currentWeight;
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Profile & targets saved successfully!'),
+        content: Row(
+          children: [
+            Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+            SizedBox(width: 10),
+            Text('Profile & targets saved and synchronized!'),
+          ],
+        ),
+        backgroundColor: Color(0xFF10B981),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -238,16 +290,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final appProvider = Provider.of<AppProvider>(context);
     final profile = appProvider.profile;
     final accentColor = appProvider.currentAccentColor;
+    final gradient = appProvider.currentAccentGradient;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile & Settings'),
         actions: [
-          TextButton(
-            onPressed: _saveAll,
-            child: Text(
-              'Save',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: accentColor),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              icon: const Icon(Icons.save_rounded, size: 18),
+              label: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              style: TextButton.styleFrom(foregroundColor: accentColor),
+              onPressed: _saveAll,
             ),
           ),
         ],
@@ -258,29 +313,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Profile Header Card
+            // 1. Profile Header Card with Rich Gradient
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: theme.dividerColor.withOpacity(0.4)),
-              ),
+              decoration: AppTheme.gradientCardDecoration(context: context, borderRadius: 22),
               child: Row(
                 children: [
                   Container(
-                    width: 60,
-                    height: 60,
+                    width: 64,
+                    height: 64,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
-                        colors: [accentColor, accentColor.withOpacity(0.7)],
+                        colors: gradient,
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: gradient.first.withOpacity(0.4),
+                          blurRadius: 14,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: Center(
                       child: Text(
                         _nameController.text.isNotEmpty ? _nameController.text[0].toUpperCase() : 'A',
-                        style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
                       ),
                     ),
                   ),
@@ -291,7 +351,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         TextField(
                           controller: _nameController,
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
                           decoration: const InputDecoration(
                             isDense: true,
                             contentPadding: EdgeInsets.zero,
@@ -302,7 +362,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 4),
                         Text(
                           '${profile.age} yrs • ${profile.heightCm.round()} cm • ${profile.weightKg.toStringAsFixed(1)} kg',
-                          style: TextStyle(fontSize: 12, color: theme.colorScheme.onBackground.withOpacity(0.6)),
+                          style: TextStyle(fontSize: 12, color: theme.colorScheme.onBackground.withOpacity(0.65)),
                         ),
                       ],
                     ),
@@ -314,14 +374,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 24),
 
             // 2. Biometrics & Calculator
-            _buildSectionHeader('Biometrics & Goals'),
+            _buildSectionHeader('Biometrics & Auto-Calculator'),
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: theme.dividerColor.withOpacity(0.4)),
-              ),
+              decoration: AppTheme.gradientCardDecoration(context: context, borderRadius: 22),
               child: Column(
                 children: [
                   // Gender Toggle
@@ -332,7 +388,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           label: const Center(child: Text('👨 Male')),
                           selected: _gender == 'male',
                           selectedColor: accentColor.withOpacity(0.2),
-                          onSelected: (val) => setState(() => _gender = 'male'),
+                          onSelected: (val) {
+                            setState(() => _gender = 'male');
+                            _recalculateAndSyncTargets(showToast: false);
+                          },
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -341,12 +400,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           label: const Center(child: Text('👩 Female')),
                           selected: _gender == 'female',
                           selectedColor: accentColor.withOpacity(0.2),
-                          onSelected: (val) => setState(() => _gender = 'female'),
+                          onSelected: (val) {
+                            setState(() => _gender = 'female');
+                            _recalculateAndSyncTargets(showToast: false);
+                          },
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
+
                   // Age, Height, Weight
                   Row(
                     children: [
@@ -364,6 +427,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
+
                   // Starting Weight & Target Weight
                   Row(
                     children: [
@@ -377,6 +441,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
+
                   // Activity Level Dropdown
                   DropdownButtonFormField<ActivityLevel>(
                     value: _activityLevel,
@@ -391,10 +456,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       );
                     }).toList(),
                     onChanged: (val) {
-                      if (val != null) setState(() => _activityLevel = val);
+                      if (val != null) {
+                        setState(() => _activityLevel = val);
+                        _recalculateAndSyncTargets(showToast: false);
+                      }
                     },
                   ),
                   const SizedBox(height: 14),
+
                   // Goal Type Dropdown
                   DropdownButtonFormField<GoalType>(
                     value: _goal,
@@ -410,10 +479,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onChanged: (val) {
                       if (val != null) {
                         setState(() => _goal = val);
-                        _recalculateTargets();
+                        _recalculateAndSyncTargets(showToast: false);
                       }
                     },
                   ),
+
                   // Weekly Target Pace (Speed) Selector
                   if (_goal != GoalType.maintain) ...[
                     const SizedBox(height: 18),
@@ -436,10 +506,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: accentColor.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
+                                decoration: AppTheme.gradientBadgeDecoration(gradientColors: gradient),
                                 child: Text(
                                   '${_goal == GoalType.lose ? "-" : "+"}${_weeklyRate.toStringAsFixed(2)} kg / week',
                                   style: TextStyle(
@@ -477,8 +544,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             activeColor: accentColor,
                             label: '${_weeklyRate.toStringAsFixed(2)} kg/wk',
                             onChanged: (val) {
-                              setState(() => _weeklyRate = (val * 100).round() / 100);
-                              _recalculateTargets(val);
+                              final rounded = (val * 100).round() / 100;
+                              setState(() => _weeklyRate = rounded);
+                              _recalculateAndSyncTargets(customWeeklyRate: rounded, showToast: false);
                             },
                           ),
                           // Dynamic Calculations & Estimation Banner
@@ -507,7 +575,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: theme.colorScheme.onBackground.withOpacity(0.8),
+                                        color: theme.colorScheme.onBackground.withOpacity(0.85),
                                       ),
                                     ),
                                   ),
@@ -519,18 +587,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                   ],
+
                   const SizedBox(height: 16),
-                  SizedBox(
+
+                  // Auto-Calculate & Sync Targets Button with Gradient
+                  Container(
                     width: double.infinity,
-                    child: OutlinedButton.icon(
-                      icon: Icon(Icons.bolt, color: accentColor),
-                      label: Text('Auto-Calculate Targets', style: TextStyle(color: accentColor)),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: accentColor),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    height: 52,
+                    decoration: AppTheme.gradientButtonDecoration(
+                      gradientColors: gradient,
+                      borderRadius: 16,
+                    ),
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.bolt_rounded, color: Colors.white, size: 22),
+                      label: const Text(
+                        'Auto-Calculate & Sync Targets',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
                       ),
-                      onPressed: () => _recalculateTargets(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () => _recalculateAndSyncTargets(showToast: true),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Auto-Sync Toggle Tile
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: theme.scaffoldBackgroundColor.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: theme.dividerColor.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Auto-Sync on New Weigh-ins',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.onBackground,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Adjusts daily calorie & macro targets automatically when you log a new weight entry.',
+                                style: TextStyle(fontSize: 11, color: theme.colorScheme.onBackground.withOpacity(0.6)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: profile.autoSyncTargets,
+                          activeColor: accentColor,
+                          onChanged: (val) {
+                            appProvider.toggleAutoSyncTargets(val);
+                          },
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -540,14 +667,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 24),
 
             // 3. Daily Targets
-            _buildSectionHeader('Daily Targets'),
+            _buildSectionHeader('Current Daily Targets'),
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: theme.dividerColor.withOpacity(0.4)),
-              ),
+              decoration: AppTheme.gradientCardDecoration(context: context, borderRadius: 22),
               child: Column(
                 children: [
                   _buildFormField('Calories Goal', _calController, 'kcal', TextInputType.number),
@@ -569,93 +692,169 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 24),
 
-            // 4. Appearance
-            _buildSectionHeader('Appearance'),
+            // 4. Appearance & Gradient Themes
+            _buildSectionHeader('Appearance & Gradient Themes'),
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: theme.dividerColor.withOpacity(0.4)),
-              ),
+              decoration: AppTheme.gradientCardDecoration(context: context, borderRadius: 22),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Light / Dark Mode Buttons
                   Row(
                     children: [
                       Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.light_mode, size: 18),
-                          label: const Text('Light'),
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: !profile.isDarkMode ? accentColor.withOpacity(0.15) : null,
-                            side: BorderSide(color: !profile.isDarkMode ? accentColor : theme.dividerColor),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          ),
-                          onPressed: () {
+                        child: GestureDetector(
+                          onTap: () {
                             if (profile.isDarkMode) appProvider.toggleTheme();
                           },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              gradient: !profile.isDarkMode ? LinearGradient(colors: gradient) : null,
+                              color: !profile.isDarkMode ? null : theme.cardColor,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: !profile.isDarkMode ? Colors.transparent : theme.dividerColor,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.light_mode, size: 18, color: !profile.isDarkMode ? Colors.white : theme.colorScheme.onBackground),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Light Frost',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: !profile.isDarkMode ? Colors.white : theme.colorScheme.onBackground,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.dark_mode, size: 18),
-                          label: const Text('Dark'),
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: profile.isDarkMode ? accentColor.withOpacity(0.15) : null,
-                            side: BorderSide(color: profile.isDarkMode ? accentColor : theme.dividerColor),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          ),
-                          onPressed: () {
+                        child: GestureDetector(
+                          onTap: () {
                             if (!profile.isDarkMode) appProvider.toggleTheme();
                           },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              gradient: profile.isDarkMode ? LinearGradient(colors: gradient) : null,
+                              color: profile.isDarkMode ? null : theme.cardColor,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: profile.isDarkMode ? Colors.transparent : theme.dividerColor,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.dark_mode, size: 18, color: profile.isDarkMode ? Colors.white : theme.colorScheme.onBackground),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Deep Dark',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: profile.isDarkMode ? Colors.white : theme.colorScheme.onBackground,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
+
                   Text(
-                    'Accent Color',
+                    'Gradient Accent Themes',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onBackground.withOpacity(0.7),
+                      color: theme.colorScheme.onBackground.withOpacity(0.75),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: List.generate(AppConstants.accentColors.length, (index) {
-                      final color = AppConstants.accentColors[index];
+                  const SizedBox(height: 14),
+
+                  // Signature Gradient Swatches
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: List.generate(AppConstants.accentGradients.length, (index) {
+                      final grad = AppConstants.accentGradients[index];
+                      final name = AppConstants.accentColorNames[index];
                       final isSelected = profile.accentColorIndex == index;
+
                       return GestureDetector(
                         onTap: () => appProvider.setAccentColor(index),
                         child: Container(
-                          width: 40,
-                          height: 40,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [
+                                grad.first.withOpacity(isSelected ? 0.25 : 0.08),
+                                grad.last.withOpacity(isSelected ? 0.15 : 0.04),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: isSelected ? Colors.white : Colors.transparent,
-                              width: 3,
+                              color: isSelected ? grad.first : theme.dividerColor.withOpacity(0.4),
+                              width: isSelected ? 2 : 1,
                             ),
                             boxShadow: isSelected
                                 ? [
                                     BoxShadow(
-                                      color: color.withOpacity(0.6),
+                                      color: grad.first.withOpacity(0.35),
                                       blurRadius: 10,
-                                      offset: const Offset(0, 2),
-                                    )
+                                      offset: const Offset(0, 3),
+                                    ),
                                   ]
                                 : null,
                           ),
-                          child: isSelected
-                              ? const Icon(Icons.check, size: 20, color: Colors.white)
-                              : null,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 22,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: LinearGradient(
+                                    colors: grad,
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: grad.first.withOpacity(0.4),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: isSelected
+                                    ? const Icon(Icons.check, size: 14, color: Colors.white)
+                                    : null,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                name,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                  color: isSelected ? grad.first : theme.colorScheme.onBackground,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     }),
@@ -670,11 +869,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildSectionHeader('AI Integration'),
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: theme.dividerColor.withOpacity(0.4)),
-              ),
+              decoration: AppTheme.gradientCardDecoration(context: context, borderRadius: 22),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -707,7 +902,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 8),
                   Text(
                     'Optional. CaLtrack includes a free built-in key for food vision and nutritional coaching, but you can enter your own key here.',
-                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onBackground.withOpacity(0.5)),
+                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onBackground.withOpacity(0.55)),
                   ),
                 ],
               ),
@@ -719,11 +914,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildSectionHeader('Data & Backup'),
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: theme.dividerColor.withOpacity(0.4)),
-              ),
+              decoration: AppTheme.gradientCardDecoration(context: context, borderRadius: 22),
               child: Column(
                 children: [
                   SizedBox(
@@ -780,7 +971,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return InkWell(
       onTap: () {
         setState(() => _weeklyRate = rate);
-        _recalculateTargets(rate);
+        _recalculateAndSyncTargets(customWeeklyRate: rate, showToast: false);
       },
       borderRadius: BorderRadius.circular(12),
       child: Container(
